@@ -115,18 +115,18 @@ describe('determineEligibility', () => {
     expect(reasons[0]).toContain('メンバーではありません');
   });
 
-  test('メンバー + 高リスク → not eligible + 理由', () => {
+  test('メンバー + 高リスク → not eligible + 件数表示', () => {
     const riskResult = evaluateRisk(['app/models/user.rb'], config);
     const { eligible, reasons } = determineEligibility(true, riskResult, 'user1', 'developer');
     expect(eligible).toBe(false);
-    expect(reasons[0]).toContain('ハイリスクファイル');
+    expect(reasons[0]).toContain('ハイリスクファイルが 1 件');
   });
 
-  test('メンバー + 境界ケース → not eligible + 理由', () => {
+  test('メンバー + 境界ケース → not eligible + 件数表示', () => {
     const riskResult = evaluateRisk(['Rakefile'], config);
     const { eligible, reasons } = determineEligibility(true, riskResult, 'user1', 'developer');
     expect(eligible).toBe(false);
-    expect(reasons[0]).toContain('ローリスクに分類できない');
+    expect(reasons[0]).toContain('ローリスクに分類できないファイルが 1 件');
   });
 });
 

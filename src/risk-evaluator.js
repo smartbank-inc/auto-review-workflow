@@ -48,10 +48,10 @@ function determineEligibility(isMember, riskResult, actor, teamSlug) {
     reasons.push(`- PR 作成者 (@${actor}) は \`${teamSlug}\` チームのメンバーではありません`);
   }
   if (hasHighRisk) {
-    reasons.push(`- ハイリスクファイルが含まれています: ${formatFileList(highRiskFiles)}`);
+    reasons.push(`- ハイリスクファイルが ${highRiskFiles.length} 件含まれています`);
   }
   if (!hasHighRisk && !allLowRisk && unknownFiles.length > 0) {
-    reasons.push(`- ローリスクに分類できないファイルが含まれています: ${formatFileList(unknownFiles)}`);
+    reasons.push(`- ローリスクに分類できないファイルが ${unknownFiles.length} 件含まれています`);
   }
   if (riskResult.hasHighRisk === false && riskResult.allLowRisk === false && unknownFiles.length === 0) {
     reasons.push('- 変更ファイルがありません');

@@ -34,6 +34,11 @@ async function evaluate({ github, context, core, inputs }) {
     isMember = true;
   } catch (error) {
     isMember = false;
+    if (error.status === 404) {
+      core.info(`${actor} は ${org}/${teamSlug} のメンバーではありません。`);
+    } else {
+      core.warning(`Team メンバーシップ確認に失敗しました (status=${error.status}): ${error.message}。GitHub App に Organization > Members: read 権限があるか確認してください。`);
+    }
   }
 
   // ── 2. 変更ファイル一覧を取得 ──
