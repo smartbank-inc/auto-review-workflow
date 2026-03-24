@@ -1,0 +1,95 @@
+name: Auto Review Evaluation
+
+on:
+  workflow_call:
+    inputs:
+      config-path:
+        description: "リポジトリ内の設定ファイルパス"
+        required: false
+        default: ".github/auto-review-config.yml"
+        type: string
+      team-slug:
+        description: "チェック対象のGitHub Teamスラッグ"
+        required: false
+        default: "developer"
+        type: string
+      org:
+        description: "GitHub Organization名"
+        required: false
+        default: "smartbank-inc"
+        type: string
+      label-name:
+        description: "レビュー不要ラベル名"
+        required: false
+        default: "auto-review"
+        type: string
+      skip-actors:
+        description: "スキップするbot actor（カンマ区切り）"
+        required: false
+        default: "dependabot[bot],renovate[bot],devin-ai-integration[bot]"
+        type: string
+    secrets:
+      app-id:
+        description: "GitHub App ID"
+        required: true
+      app-private-key:
+        description: "GitHub App 秘密鍵"
+        required: true
+
+jobs:
+  evaluate:
+    # bot除外・author判定はJS側で pull_request.user.login を使用
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # ラベル・コメント・レビュー操作は GitHub App トークン経由で実行するため、
+    # GITHUB_TOKEN の permissions は最小限に設定
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout auto-review-workflow
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: smartbank-inc/auto-review-workflow
+          path: .auto-review
+
+      - name: Checkout caller repository (for config)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: .caller-repo
+          sparse-checkout: |
+            ${{ inputs.config-path }}
+
+      - name: GitHub App トークン生成
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: cd .auto-review && npm ci
+
+      - name: PR リスク評価・ラベル管理
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const { evaluate } = require('./.auto-review/src/evaluate.js');
+            await evaluate({
+              github,
+              context,
+              core,
+              inputs: {
+                configPath: '.caller-repo/${{ inputs.config-path }}',
+                teamSlug: '${{ inputs.team-slug }}',
+                org: '${{ inputs.org }}',
+                labelName: '${{ inputs.label-name }}',
+                skipActors: '${{ inputs.skip-actors }}'.split(',').map(s => s.trim()),
+              },
+            });

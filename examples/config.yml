@@ -1,0 +1,27 @@
+# auto-review-config.yml のサンプル
+#
+# このファイルを .github/auto-review-config.yml として配置してください。
+# 設定ファイルがない場合はデフォルトルールで動作します。
+
+# ハイリスクパターン: 1つでも該当 → レビュー必須
+# 正規表現で記述（ファイルパスに対してマッチ）
+high_risk_patterns:
+  - ^app/
+  - ^lib/
+  - ^config/
+  - ^db/
+  - ^\.github/
+  - ^Gemfile$
+  - ^Gemfile\.lock$
+
+# ローリスクパターン: すべてのファイルがいずれかに該当 → レビュー不要の候補
+# pattern: 正規表現、label: コメントに表示するカテゴリ名
+low_risk_patterns:
+  - pattern: \.md$
+    label: ドキュメント (Markdown)
+  - pattern: ^docs/
+    label: docs ディレクトリ
+  - pattern: ^spec/
+    label: テストコード
+  - pattern: \.rbs$
+    label: RBS 型定義
