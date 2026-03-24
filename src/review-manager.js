@@ -11,7 +11,9 @@ async function syncReview(github, owner, repo, prNumber, eligible, core) {
     { owner, repo, pull_number: prNumber, per_page: 100 },
   );
 
-  const appLogin = (await github.rest.apps.getAuthenticated()).data.slug + '[bot]';
+  // Installation token で認証されたユーザー（= App の bot アカウント）のログイン名を取得
+  const { data: authenticatedUser } = await github.rest.users.getAuthenticated();
+  const appLogin = authenticatedUser.login;
   const autoApprovals = allReviews.filter(
     r => r.state === 'APPROVED' && r.body?.includes(APPROVE_MARKER) && r.user?.login === appLogin
   );
