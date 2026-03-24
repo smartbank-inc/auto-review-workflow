@@ -24,21 +24,21 @@ async function evaluate({ github, context, core, inputs }) {
   }
 
   // ── 1. Team メンバーシップ確認 ──
+  // teams.getMembershipForUserInOrg は App token だと制限があるため、
+  // team メンバー一覧を取得して actor が含まれるかチェックする
   let isMember = false;
   try {
-    await github.rest.teams.getMembershipForUserInOrg({
-      org,
-      team_slug: teamSlug,
-      username: actor,
-    });
-    isMember = true;
+    const members = await github.paginate(
+      github.rest.teams.listMembersInOrg,
+      { org, team_slug: teamSlug, per_page: 100 },
+    );
+    isMember = members.some(m => m.login === actor);
+    if (!isMember) {
+      core.info(`${actor} は ${org}/${teamSlug} のメンバーではありません。`);
+    }
   } catch (error) {
     isMember = false;
-    if (error.status === 404) {
-      core.info(`${actor} は ${org}/${teamSlug} のメンバーではありません。`);
-    } else {
-      core.warning(`Team メンバーシップ確認に失敗しました (status=${error.status}): ${error.message}。GitHub App に Organization > Members: read 権限があるか確認してください。`);
-    }
+    core.warning(`Team メンバー一覧の取得に失敗しました (status=${error.status}): ${error.message}。GitHub App に Organization > Members: read 権限があるか確認してください。`);
   }
 
   // ── 2. 変更ファイル一覧を取得 ──
