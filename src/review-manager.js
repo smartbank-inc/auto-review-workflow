@@ -11,11 +11,10 @@ async function syncReview(github, owner, repo, prNumber, eligible, core) {
     { owner, repo, pull_number: prNumber, per_page: 100 },
   );
 
-  // Installation token で認証されたユーザー（= App の bot アカウント）のログイン名を取得
-  const { data: authenticatedUser } = await github.rest.users.getAuthenticated();
-  const appLogin = authenticatedUser.login;
+  // APPROVE_MARKER を含むレビューを自動承認として識別
+  // （user.type === 'Bot' で人間の誤マッチを防止）
   const autoApprovals = allReviews.filter(
-    r => r.state === 'APPROVED' && r.body?.includes(APPROVE_MARKER) && r.user?.login === appLogin
+    r => r.state === 'APPROVED' && r.body?.includes(APPROVE_MARKER) && r.user?.type === 'Bot'
   );
 
   if (eligible) {
