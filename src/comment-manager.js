@@ -47,28 +47,74 @@ function buildComment(eligible, actor, teamSlug, filenames, matchedCategories, r
 }
 
 /**
- * PR コメントを作成または更新する（マーカーで既存コメントを識別）。
+ * eligible 時のみ PR コメントを作成/更新する。
+ * not eligible に変わった場合は既存コメントを削除する。
  */
-async function syncComment(github, owner, repo, prNumber, commentBody) {
+async function syncComment(github, owner, repo, prNumber, eligible, commentBody) {
   const comments = await github.paginate(
     github.rest.issues.listComments,
     { owner, repo, issue_number: prNumber, per_page: 100 },
   );
   const existing = comments.find(c => c.body?.includes(COMMENT_MARKER));
 
-  if (existing) {
-    await github.rest.issues.updateComment({
+  if (eligible) {
+    if (existing) {
+      await github.rest.issues.updateComment({
+        owner, repo,
+        comment_id: existing.id,
+        body: commentBody,
+      });
+    } else {
+      await github.rest.issues.createComment({
+        owner, repo,
+        issue_number: prNumber,
+        body: commentBody,
+      });
+    }
+  } else if (existing) {
+    // not eligible に変わった場合、以前のコメントを削除
+    await github.rest.issues.deleteComment({
       owner, repo,
       comment_id: existing.id,
-      body: commentBody,
-    });
-  } else {
-    await github.rest.issues.createComment({
-      owner, repo,
-      issue_number: prNumber,
-      body: commentBody,
     });
   }
 }
 
-module.exports = { buildComment, syncComment, COMMENT_MARKER };
+/**
+ * Job Summary 用の Markdown を生成する。
+ */
+function buildSummary(eligible, actor, teamSlug, filenames, matchedCategories, reasons, isMember, riskResult) {
+  const lines = [];
+
+  if (eligible) {
+    lines.push('## :white_check_mark: ヒューマンレビュー不要');
+  } else {
+    lines.push('## :eyes: ヒューマンレビューが必要');
+  }
+
+  lines.push('');
+  lines.push('| 項目 | 結果 |');
+  lines.push('|------|------|');
+  lines.push(`| PR 作成者 | @${actor} |`);
+  lines.push(`| チームメンバー | ${isMember ? ':white_check_mark: はい' : ':x: いいえ'} |`);
+  lines.push(`| 高リスクファイル | ${riskResult.hasHighRisk ? `:x: ${riskResult.highRiskFiles.length} 件` : ':white_check_mark: なし'} |`);
+  lines.push(`| 全ファイル低リスク | ${riskResult.allLowRisk ? ':white_check_mark: はい' : ':x: いいえ'} |`);
+  lines.push(`| 変更ファイル数 | ${filenames.length} 件 |`);
+  lines.push(`| 判定 | **${eligible ? 'レビュー不要' : 'レビュー必須'}** |`);
+
+  if (reasons.length > 0) {
+    lines.push('');
+    lines.push('### 理由');
+    lines.push('');
+    lines.push(...reasons);
+  }
+
+  if (eligible && matchedCategories.size > 0) {
+    lines.push('');
+    lines.push(`### 該当カテゴリ: ${[...matchedCategories].join(', ')}`);
+  }
+
+  return lines.join('\n');
+}
+
+module.exports = { buildComment, syncComment, buildSummary, COMMENT_MARKER };

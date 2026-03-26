@@ -4,7 +4,7 @@ const { loadConfig } = require('./config-loader');
 const { evaluateRisk, determineEligibility } = require('./risk-evaluator');
 const { ensureLabel, syncLabel } = require('./label-manager');
 const { syncReview } = require('./review-manager');
-const { buildComment, syncComment } = require('./comment-manager');
+const { buildComment, syncComment, buildSummary } = require('./comment-manager');
 
 /**
  * github-script から呼ばれるメインエントリポイント。
@@ -60,11 +60,17 @@ async function evaluate({ github, context, core, inputs }) {
   // ── 5. 自動承認 / 取り消し ──
   await syncReview(github, owner, repo, prNumber, eligible, core);
 
-  // ── 6. PR コメント ──
+  // ── 6. PR コメント（eligible 時のみ、not eligible 時は既存コメント削除） ──
   const commentBody = buildComment(
     eligible, actor, teamSlug, filenames, riskResult.matchedCategories, reasons,
   );
-  await syncComment(github, owner, repo, prNumber, commentBody);
+  await syncComment(github, owner, repo, prNumber, eligible, commentBody);
+
+  // ── 7. Job Summary ──
+  const summary = buildSummary(
+    eligible, actor, teamSlug, filenames, riskResult.matchedCategories, reasons, isMember, riskResult,
+  );
+  await core.summary.addRaw(summary).write();
 
   core.info(`PR #${prNumber}: eligible=${eligible}, isMember=${isMember}, hasHighRisk=${riskResult.hasHighRisk}, allLowRisk=${riskResult.allLowRisk}, files=${filenames.length}`);
 }

@@ -1,6 +1,6 @@
 'use strict';
 
-const { buildComment, COMMENT_MARKER } = require('../src/comment-manager');
+const { buildComment, buildSummary, COMMENT_MARKER } = require('../src/comment-manager');
 
 describe('buildComment', () => {
   test('eligible: マーカーと判定理由が含まれる', () => {
@@ -19,7 +19,7 @@ describe('buildComment', () => {
   });
 
   test('not eligible: 理由が含まれる', () => {
-    const reasons = ['- ハイリスクファイルが含まれています: `app/models/user.rb`'];
+    const reasons = ['- ハイリスクファイルが 1 件含まれています'];
     const body = buildComment(
       false, 'user1', 'developer',
       ['app/models/user.rb'], new Set(), reasons,
@@ -49,5 +49,68 @@ describe('buildComment', () => {
 
     expect(body).toContain('テストコード');
     expect(body).toContain('ドキュメント (Markdown)');
+  });
+});
+
+describe('buildSummary', () => {
+  test('eligible: レビュー不要の概要テーブルが生成される', () => {
+    const matchedCategories = new Set(['ドキュメント (Markdown)']);
+    const riskResult = {
+      hasHighRisk: false,
+      allLowRisk: true,
+      highRiskFiles: [],
+      unknownFiles: [],
+      matchedCategories,
+    };
+    const summary = buildSummary(
+      true, 'user1', 'developer',
+      ['docs/README.md'], matchedCategories, [],
+      true, riskResult,
+    );
+
+    expect(summary).toContain('ヒューマンレビュー不要');
+    expect(summary).toContain('@user1');
+    expect(summary).toContain(':white_check_mark: はい');
+    expect(summary).toContain('レビュー不要');
+    expect(summary).toContain('ドキュメント (Markdown)');
+  });
+
+  test('not eligible: レビュー必須の概要テーブルが生成される', () => {
+    const riskResult = {
+      hasHighRisk: true,
+      allLowRisk: false,
+      highRiskFiles: ['app/models/user.rb'],
+      unknownFiles: [],
+      matchedCategories: new Set(),
+    };
+    const reasons = ['- ハイリスクファイルが 1 件含まれています'];
+    const summary = buildSummary(
+      false, 'user1', 'developer',
+      ['app/models/user.rb'], new Set(), reasons,
+      true, riskResult,
+    );
+
+    expect(summary).toContain('ヒューマンレビューが必要');
+    expect(summary).toContain(':x: 1 件');
+    expect(summary).toContain('レビュー必須');
+    expect(summary).toContain('ハイリスクファイル');
+  });
+
+  test('非メンバー: チームメンバーが「いいえ」と表示される', () => {
+    const riskResult = {
+      hasHighRisk: false,
+      allLowRisk: true,
+      highRiskFiles: [],
+      unknownFiles: [],
+      matchedCategories: new Set(['ドキュメント (Markdown)']),
+    };
+    const reasons = ['- PR 作成者 (@user1) は `developer` チームのメンバーではありません'];
+    const summary = buildSummary(
+      false, 'user1', 'developer',
+      ['docs/README.md'], new Set(), reasons,
+      false, riskResult,
+    );
+
+    expect(summary).toContain(':x: いいえ');
   });
 });
