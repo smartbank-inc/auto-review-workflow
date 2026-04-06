@@ -1,7 +1,5 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
 const YAML = require('yaml');
 
 const DEFAULT_CONFIG = {
@@ -19,28 +17,23 @@ const DEFAULT_CONFIG = {
 };
 
 /**
- * 設定を読み込み、正規表現にコンパイルして返す。
- * 優先順位: インライン文字列 (configString) > ファイル (configPath) > デフォルト
+ * インライン YAML 文字列から設定を読み込み、正規表現にコンパイルして返す。
+ * 空文字列の場合はデフォルト設定を使用する。
  *
- * @param {{ configString?: string, configPath?: string }} options
+ * @param {string} configString - YAML文字列
  * @param {{ info: Function, warning: Function }} [logger] - ログ出力（GitHub Actions core 互換）
  * @returns {{ highRiskPatterns: RegExp[], lowRiskPatterns: { pattern: RegExp, label: string }[] }}
  */
-function loadConfig(options, logger) {
+function loadConfig(configString, logger) {
   const log = logger || { info: () => {}, warning: () => {} };
-  const { configString, configPath } = options || {};
   let raw;
 
   if (configString && configString.trim() !== '') {
     raw = YAML.parse(configString);
     log.info('インライン設定を読み込みました。');
-  } else if (configPath && fs.existsSync(configPath)) {
-    const content = fs.readFileSync(configPath, 'utf8');
-    raw = YAML.parse(content);
-    log.info(`設定ファイルを読み込みました: ${configPath}`);
   } else {
     raw = DEFAULT_CONFIG;
-    log.info('設定が見つかりません。デフォルトルールで動作します。');
+    log.info('config 未指定のため、デフォルトルールで動作します。');
   }
 
   return compileConfig(raw);

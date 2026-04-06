@@ -4,14 +4,9 @@ on:
   workflow_call:
     inputs:
       config:
-        description: "YAML文字列で設定を直接指定（指定時は config-path より優先）"
+        description: "YAML文字列で設定を指定（未指定時はデフォルトルール）"
         required: false
         default: ""
-        type: string
-      config-path:
-        description: "リポジトリ内の設定ファイルパス（config 未指定時に使用）"
-        required: false
-        default: ".github/auto-review-config.yml"
         type: string
       team-slug:
         description: "チェック対象のGitHub Teamスラッグ"
@@ -58,14 +53,6 @@ jobs:
           repository: smartbank-inc/auto-review-workflow
           path: .auto-review
 
-      - name: Checkout caller repository (for config)
-        if: inputs.config == ''
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          path: .caller-repo
-          sparse-checkout: |
-            ${{ inputs.config-path }}
-
       - name: GitHub App トークン生成
         id: app-token
         uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
@@ -85,7 +72,6 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           INPUT_CONFIG: ${{ inputs.config }}
-          INPUT_CONFIG_PATH: ${{ inputs.config-path }}
           INPUT_TEAM_SLUG: ${{ inputs.team-slug }}
           INPUT_ORG: ${{ inputs.org }}
           INPUT_LABEL_NAME: ${{ inputs.label-name }}
@@ -100,9 +86,6 @@ jobs:
               core,
               inputs: {
                 configString: process.env.INPUT_CONFIG,
-                configPath: process.env.INPUT_CONFIG
-                  ? ''
-                  : `.caller-repo/${process.env.INPUT_CONFIG_PATH}`,
                 teamSlug: process.env.INPUT_TEAM_SLUG,
                 org: process.env.INPUT_ORG,
                 labelName: process.env.INPUT_LABEL_NAME,

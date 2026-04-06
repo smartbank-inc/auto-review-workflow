@@ -11,7 +11,7 @@ const { buildComment, syncComment, buildSummary } = require('./comment-manager')
  * PR のリスク評価 → ラベル管理 → 自動承認 → コメントを一貫して実行する。
  */
 async function evaluate({ github, context, core, inputs }) {
-  const { configPath, configString, teamSlug, org, labelName, skipActors } = inputs;
+  const { configString, teamSlug, org, labelName, skipActors } = inputs;
   const prNumber = context.payload.pull_request.number;
   const owner = context.repo.owner;
   const repo = context.repo.repo;
@@ -49,7 +49,7 @@ async function evaluate({ github, context, core, inputs }) {
   const filenames = files.map(f => f.filename);
 
   // ── 3. 設定読み込み + リスク判定 ──
-  const config = loadConfig({ configString, configPath }, core);
+  const config = loadConfig(configString, core);
   const riskResult = evaluateRisk(filenames, config);
   const { eligible, reasons } = determineEligibility(isMember, riskResult, actor, teamSlug);
 
