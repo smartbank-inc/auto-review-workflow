@@ -61,13 +61,40 @@ jobs:
 
 ## Inputs
 
-| Input         | デフォルト                                                | 説明                               |
-| ------------- | --------------------------------------------------------- | ---------------------------------- |
-| `config-path` | `.github/auto-review-config.yml`                          | 設定ファイルのパス                 |
-| `team-slug`   | `developer`                                               | チェック対象の GitHub Team         |
-| `org`         | `smartbank-inc`                                           | GitHub Organization 名             |
-| `label-name`  | `auto-review`                                             | 付与するラベル名                   |
-| `skip-actors` | `dependabot[bot],renovate[bot],devin-ai-integration[bot]` | スキップする actor（カンマ区切り） |
+| Input         | デフォルト                                                | 説明                                                   |
+| ------------- | --------------------------------------------------------- | ------------------------------------------------------ |
+| `config`      | `""`                                                      | YAML文字列で設定を直接指定（指定時は config-path より優先） |
+| `config-path` | `.github/auto-review-config.yml`                          | 設定ファイルのパス（`config` 未指定時に使用）          |
+| `team-slug`   | `developer`                                               | チェック対象の GitHub Team                             |
+| `org`         | `smartbank-inc`                                           | GitHub Organization 名                                 |
+| `label-name`  | `auto-review`                                             | 付与するラベル名                                       |
+| `skip-actors` | `dependabot[bot],renovate[bot],devin-ai-integration[bot]` | スキップする actor（カンマ区切り）                     |
+
+### インライン config の例
+
+設定ファイルを作成する代わりに、呼び出し YAML にヒアドキュメントで直接書けます。
+
+```yaml
+jobs:
+  evaluate:
+    uses: smartbank-inc/auto-review-workflow/.github/workflows/evaluate.yml@main
+    with:
+      team-slug: "developer"
+      config: |
+        high_risk_patterns:
+          - ^app/
+          - ^lib/
+          - ^\.github/
+          - ^Gemfile$
+        low_risk_patterns:
+          - pattern: \.md$
+            label: ドキュメント (Markdown)
+          - pattern: ^spec/
+            label: テストコード
+    secrets:
+      app-id: ${{ secrets.SMARTBANK_AUTO_MERGE_BOT_APP_ID }}
+      app-private-key: ${{ secrets.SMARTBANK_AUTO_MERGE_BOT_PRIVATE_KEY }}
+```
 
 ## デフォルトルール
 
