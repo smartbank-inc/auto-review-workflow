@@ -70,7 +70,6 @@ async function evaluate({ github, context, core, inputs }) {
   const summary = buildSummary(
     eligible, actor, teamSlug, filenames, riskResult.matchedCategories, reasons, isMember, riskResult,
   );
-  core.info(`GITHUB_STEP_SUMMARY=${process.env.GITHUB_STEP_SUMMARY || '(unset)'}`);
   await core.summary.addRaw(summary).write();
 
   core.info(`PR #${prNumber}: eligible=${eligible}, isMember=${isMember}, hasHighRisk=${riskResult.hasHighRisk}, allLowRisk=${riskResult.allLowRisk}, files=${filenames.length}`);
