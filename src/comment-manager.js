@@ -1,83 +1,36 @@
 'use strict';
 
 const { escapeFilename } = require('./risk-evaluator');
-
-const COMMENT_MARKER = '<!-- auto-review-evaluation -->';
+const { APPROVE_MARKER } = require('./review-manager');
 
 /**
- * eligible 判定結果に応じた PR コメント本文を生成する。
+ * 自動承認 review に載せる body を生成する。
+ * 先頭に APPROVE_MARKER を含めることで自動承認 review として識別可能にする。
  *
- * @param {boolean} eligible
  * @param {string} actor - PR作成者
  * @param {string} teamSlug
  * @param {string[]} filenames - 変更ファイル一覧
  * @param {Set<string>} matchedCategories - 該当した低リスクカテゴリ
- * @param {string[]} reasons - レビュー必要な理由
- * @returns {string} コメント本文
+ * @returns {string} review body
  */
-function buildComment(eligible, actor, teamSlug, filenames, matchedCategories, reasons) {
-  if (eligible) {
-    const fileList = filenames.map(f => `- \`${escapeFilename(f)}\``).join('\n');
-    const categories = [...matchedCategories].join(', ');
-    return [
-      COMMENT_MARKER,
-      '## :white_check_mark: ヒューマンレビュー不要と判定されました',
-      '',
-      '**判定理由:**',
-      `- PR 作成者 (@${actor}) は \`${teamSlug}\` チームのメンバーです`,
-      '- 高リスクファイルは含まれていません',
-      `- すべての変更ファイルが以下のローリスクカテゴリに該当します: ${categories}`,
-      '',
-      `**変更ファイル (${filenames.length} 件):**`,
-      fileList,
-      '',
-      '> この判定はプッシュごとに再評価されます。ハイリスクなファイルが追加された場合、ラベルは自動的に除去されます。',
-    ].join('\n');
-  }
-
+function buildApprovalBody(actor, teamSlug, filenames, matchedCategories) {
+  const fileList = filenames.map(f => `- \`${escapeFilename(f)}\``).join('\n');
+  const categories = [...matchedCategories].join(', ');
   return [
-    COMMENT_MARKER,
-    '## :eyes: ヒューマンレビューが必要です',
+    `${APPROVE_MARKER} このPRはリスク評価の結果、ヒューマンレビュー不要と判定されました。`,
+    '',
+    '## :white_check_mark: ヒューマンレビュー不要と判定されました',
     '',
     '**判定理由:**',
-    reasons.join('\n'),
+    `- PR 作成者 (@${actor}) は \`${teamSlug}\` チームのメンバーです`,
+    '- 高リスクファイルは含まれていません',
+    `- すべての変更ファイルが以下のローリスクカテゴリに該当します: ${categories}`,
     '',
-    '> この判定はプッシュごとに再評価されます。',
+    `**変更ファイル (${filenames.length} 件):**`,
+    fileList,
+    '',
+    '> この判定はプッシュごとに再評価されます。ハイリスクなファイルが追加された場合、ラベルは自動的に除去されます。',
   ].join('\n');
-}
-
-/**
- * eligible 時のみ PR コメントを作成/更新する。
- * not eligible に変わった場合は既存コメントを削除する。
- */
-async function syncComment(github, owner, repo, prNumber, eligible, commentBody) {
-  const comments = await github.paginate(
-    github.rest.issues.listComments,
-    { owner, repo, issue_number: prNumber, per_page: 100 },
-  );
-  const existing = comments.find(c => c.body?.includes(COMMENT_MARKER));
-
-  if (eligible) {
-    if (existing) {
-      await github.rest.issues.updateComment({
-        owner, repo,
-        comment_id: existing.id,
-        body: commentBody,
-      });
-    } else {
-      await github.rest.issues.createComment({
-        owner, repo,
-        issue_number: prNumber,
-        body: commentBody,
-      });
-    }
-  } else if (existing) {
-    // not eligible に変わった場合、以前のコメントを削除
-    await github.rest.issues.deleteComment({
-      owner, repo,
-      comment_id: existing.id,
-    });
-  }
 }
 
 /**
@@ -117,4 +70,4 @@ function buildSummary(eligible, actor, teamSlug, filenames, matchedCategories, r
   return lines.join('\n');
 }
 
-module.exports = { buildComment, syncComment, buildSummary, COMMENT_MARKER };
+module.exports = { buildApprovalBody, buildSummary };

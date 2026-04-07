@@ -4,8 +4,10 @@ const APPROVE_MARKER = '[自動承認]';
 
 /**
  * eligible に応じて自動承認レビューを作成、または既存の自動承認を取り消す。
+ *
+ * @param {string} body - eligible 時に review に載せる本文（先頭に APPROVE_MARKER を含めること）
  */
-async function syncReview(github, owner, repo, prNumber, eligible, core) {
+async function syncReview(github, owner, repo, prNumber, eligible, core, body) {
   const allReviews = await github.paginate(
     github.rest.pulls.listReviews,
     { owner, repo, pull_number: prNumber, per_page: 100 },
@@ -22,7 +24,7 @@ async function syncReview(github, owner, repo, prNumber, eligible, core) {
       await github.rest.pulls.createReview({
         owner, repo, pull_number: prNumber,
         event: 'APPROVE',
-        body: `${APPROVE_MARKER} このPRはリスク評価の結果、ヒューマンレビュー不要と判定されました。`,
+        body,
       });
     }
   } else {
