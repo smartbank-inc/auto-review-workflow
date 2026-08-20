@@ -1,6 +1,6 @@
 'use strict';
 
-const { isRevertTitle, isDeletionOnly, isRenameOnly } = require('../src/pr-shape-evaluator');
+const { isRevertTitle, isDeletionOnly, isRenameOnly, evaluatePrShape } = require('../src/pr-shape-evaluator');
 
 describe('isRevertTitle', () => {
   test('GitHub標準のRevertボタン形式 → true', () => {
@@ -78,5 +78,39 @@ describe('isRenameOnly', () => {
 
   test('ファイルが空配列なら false', () => {
     expect(isRenameOnly([])).toBe(false);
+  });
+});
+
+describe('evaluatePrShape', () => {
+  const enabledRules = ['revert_title', 'deletion_only', 'rename_only'];
+
+  test('revertタイトル → matched: true, rule: revert_title', () => {
+    const files = [{ filename: 'app/models/user.rb', status: 'modified', additions: 3, deletions: 1 }];
+    const result = evaluatePrShape(files, 'Revert "fix: foo"', enabledRules);
+    expect(result).toEqual({ matched: true, rule: 'revert_title' });
+  });
+
+  test('削除のみPR → matched: true, rule: deletion_only', () => {
+    const files = [{ filename: 'app/models/old.rb', status: 'removed', additions: 0, deletions: 10 }];
+    const result = evaluatePrShape(files, 'chore: 不要なコードを削除', enabledRules);
+    expect(result).toEqual({ matched: true, rule: 'deletion_only' });
+  });
+
+  test('renameのみPR → matched: true, rule: rename_only', () => {
+    const files = [{ filename: 'app/models/new.rb', status: 'renamed', additions: 0, deletions: 0 }];
+    const result = evaluatePrShape(files, 'refactor: ファイル名変更', enabledRules);
+    expect(result).toEqual({ matched: true, rule: 'rename_only' });
+  });
+
+  test('どれにも該当しない → matched: false, rule: null', () => {
+    const files = [{ filename: 'app/models/user.rb', status: 'modified', additions: 3, deletions: 1 }];
+    const result = evaluatePrShape(files, 'feat: 新機能追加', enabledRules);
+    expect(result).toEqual({ matched: false, rule: null });
+  });
+
+  test('該当してもenabledRulesに含まれなければ matched: false', () => {
+    const files = [{ filename: 'app/models/old.rb', status: 'removed', additions: 0, deletions: 10 }];
+    const result = evaluatePrShape(files, 'chore: 削除', []);
+    expect(result).toEqual({ matched: false, rule: null });
   });
 });

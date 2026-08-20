@@ -32,4 +32,30 @@ function isRenameOnly(files) {
   return files.length > 0 && files.every(f => f.status === 'renamed' && f.additions === 0 && f.deletions === 0);
 }
 
-module.exports = { isRevertTitle, isDeletionOnly, isRenameOnly };
+const PR_SHAPE_RULES = {
+  revert_title: (files, title) => isRevertTitle(title),
+  deletion_only: (files) => isDeletionOnly(files),
+  rename_only: (files) => isRenameOnly(files),
+};
+
+/**
+ * PR形状ルール（revert_title / deletion_only / rename_only）を評価し、
+ * 該当するものがあれば最初に一致したルール名を返す。
+ * enabledRules の並び順が優先順位になる。
+ *
+ * @param {object[]} files
+ * @param {string} title - PRタイトル
+ * @param {string[]} enabledRules - 有効化するルール名の配列（config の pr_level_low_risk_rules）
+ * @returns {{ matched: boolean, rule: string|null }}
+ */
+function evaluatePrShape(files, title, enabledRules) {
+  for (const ruleName of enabledRules) {
+    const check = PR_SHAPE_RULES[ruleName];
+    if (check && check(files, title)) {
+      return { matched: true, rule: ruleName };
+    }
+  }
+  return { matched: false, rule: null };
+}
+
+module.exports = { isRevertTitle, isDeletionOnly, isRenameOnly, evaluatePrShape };
