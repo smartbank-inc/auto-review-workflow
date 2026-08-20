@@ -11,4 +11,15 @@ function isRevertTitle(title) {
   return /^Revert "/.test(title);
 }
 
-module.exports = { isRevertTitle };
+/**
+ * PR内の全変更ファイルが「追加行なし（削除のみ）」であるかを判定する。
+ * ファイル全体削除（status=removed）と、ファイル内の一部行削除の両方を対象に含む。
+ *
+ * @param {{ additions: number, deletions: number }[]} files
+ * @returns {boolean}
+ */
+function isDeletionOnly(files) {
+  return files.length > 0 && files.every(f => f.additions === 0 && f.deletions > 0);
+}
+
+module.exports = { isRevertTitle, isDeletionOnly };
