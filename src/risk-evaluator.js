@@ -86,7 +86,7 @@ function determineEligibility(isMember, riskResult, actor, teamSlug, prShapeResu
     reasons.push(`- PR 作成者 (@${actor}) は \`${teamSlug}\` チームのメンバーではありません`);
   }
 
-  if (prShapeResult.matched) {
+  if (prShapeResult.matched && actionsUpdateFiles.length === 0) {
     return { eligible: isMember, reasons: isMember ? [] : reasons };
   }
 

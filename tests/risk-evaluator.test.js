@@ -277,6 +277,28 @@ describe('determineEligibility', () => {
     expect(eligible).toBe(false);
     expect(reasons.some(r => r.includes('Actions'))).toBe(true);
   });
+
+  test('PR形状ルールに該当していても、actions update除外ファイルがあれば not eligible', () => {
+    const customConfig = compileConfig({
+      low_risk_patterns: [
+        { pattern: '^\\.github/workflows/', label: 'ワークフロー', actions_update_excluded: true },
+      ],
+    });
+    const files = [
+      {
+        filename: '.github/workflows/ci.yml',
+        status: 'modified',
+        additions: 1,
+        deletions: 1,
+        patch: '@@ -1,1 +1,1 @@\n-        uses: actions/checkout@abc123 # v6.0.0\n+        uses: actions/checkout@def456 # v7.0.0',
+      },
+    ];
+    const riskResult = evaluateRisk(files, customConfig);
+    const shapeMatch = { matched: true, rule: 'revert_title' };
+    const { eligible, reasons } = determineEligibility(true, riskResult, 'user1', 'developer', shapeMatch, false);
+    expect(eligible).toBe(false);
+    expect(reasons.some(r => r.includes('Actions'))).toBe(true);
+  });
 });
 
 describe('escapeFilename', () => {
