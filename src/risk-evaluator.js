@@ -1,6 +1,6 @@
 'use strict';
 
-const USES_LINE_PATTERN = /^[+-]\s*-?\s*uses:\s*\S+@\S+/;
+const USES_LINE_PATTERN = /^[+-]\s*-?\s*uses:\s*\S+/;
 
 /**
  * ワークフローファイルのdiffが、GitHub Actionsのバージョン参照（uses:）行の

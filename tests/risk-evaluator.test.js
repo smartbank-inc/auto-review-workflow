@@ -352,4 +352,13 @@ describe('isActionsUpdateOnly', () => {
   test('変更行が1つもない（ヘッダのみ）→ false', () => {
     expect(isActionsUpdateOnly('@@ -1,3 +1,3 @@\n context line')).toBe(false);
   });
+
+  test('@を含まないuses:行（docker参照等）のバージョン更新のみ → true', () => {
+    const patch = [
+      '@@ -5,3 +5,3 @@',
+      '-        uses: docker://alpine:3.18',
+      '+        uses: docker://alpine:3.19',
+    ].join('\n');
+    expect(isActionsUpdateOnly(patch)).toBe(true);
+  });
 });
