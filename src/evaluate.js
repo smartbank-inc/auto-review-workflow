@@ -45,7 +45,10 @@ async function evaluate({ github, context, core, inputs }) {
   }
 
   // ── 2. リリースブランチ向けPRかどうかを判定 ──
-  const isReleaseBranch = releaseBaseRef !== '' && baseRef === releaseBaseRef;
+  // releaseBaseRef が undefined/null の場合（release-base-ref input を持たない古いバージョンの
+  // evaluate.yml から呼ばれた場合など）は 'main' にフォールバックし、安全側に倒す。
+  const resolvedReleaseBaseRef = releaseBaseRef ?? 'main';
+  const isReleaseBranch = resolvedReleaseBaseRef !== '' && baseRef === resolvedReleaseBaseRef;
   if (isReleaseBranch) {
     core.info(`base branch (${baseRef}) はリリースブランチのため、自動承認の対象外です。`);
   }
