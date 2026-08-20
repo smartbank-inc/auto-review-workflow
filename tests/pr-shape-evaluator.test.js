@@ -1,6 +1,6 @@
 'use strict';
 
-const { isRevertTitle, isDeletionOnly } = require('../src/pr-shape-evaluator');
+const { isRevertTitle, isDeletionOnly, isRenameOnly } = require('../src/pr-shape-evaluator');
 
 describe('isRevertTitle', () => {
   test('GitHub標準のRevertボタン形式 → true', () => {
@@ -50,5 +50,33 @@ describe('isDeletionOnly', () => {
 
   test('ファイルが空配列なら false', () => {
     expect(isDeletionOnly([])).toBe(false);
+  });
+});
+
+describe('isRenameOnly', () => {
+  test('全ファイルが内容変更なしのrenameのみ → true', () => {
+    const files = [
+      { filename: 'app/models/new_name.rb', status: 'renamed', additions: 0, deletions: 0 },
+    ];
+    expect(isRenameOnly(files)).toBe(true);
+  });
+
+  test('renameかつ内容変更あり → false', () => {
+    const files = [
+      { filename: 'app/models/new_name.rb', status: 'renamed', additions: 2, deletions: 1 },
+    ];
+    expect(isRenameOnly(files)).toBe(false);
+  });
+
+  test('rename以外のファイルが混在 → false', () => {
+    const files = [
+      { filename: 'app/models/new_name.rb', status: 'renamed', additions: 0, deletions: 0 },
+      { filename: 'app/models/other.rb', status: 'modified', additions: 1, deletions: 0 },
+    ];
+    expect(isRenameOnly(files)).toBe(false);
+  });
+
+  test('ファイルが空配列なら false', () => {
+    expect(isRenameOnly([])).toBe(false);
   });
 });

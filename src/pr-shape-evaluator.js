@@ -22,4 +22,14 @@ function isDeletionOnly(files) {
   return files.length > 0 && files.every(f => f.additions === 0 && f.deletions > 0);
 }
 
-module.exports = { isRevertTitle, isDeletionOnly };
+/**
+ * PR内の全変更ファイルが「内容変更を伴わない純粋なrename/move」であるかを判定する。
+ *
+ * @param {{ status: string, additions: number, deletions: number }[]} files
+ * @returns {boolean}
+ */
+function isRenameOnly(files) {
+  return files.length > 0 && files.every(f => f.status === 'renamed' && f.additions === 0 && f.deletions === 0);
+}
+
+module.exports = { isRevertTitle, isDeletionOnly, isRenameOnly };
