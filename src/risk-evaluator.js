@@ -5,7 +5,10 @@ const USES_LINE_PATTERN = /^[+-]\s*-?\s*uses:\s*\S+@\S+/;
 /**
  * ワークフローファイルのdiffが、GitHub Actionsのバージョン参照（uses:）行の
  * 変更のみで構成されているかを判定する。
- * patchが取得できない場合（ファイルが大きすぎる等）は安全側に倒し false を返す。
+ * patchが取得できない場合はfalseを返す。
+ * 呼び出し側（evaluateRisk）で、actions_update_excludedなパターンに該当したファイルの
+ * patchが無い場合は安全側（要レビュー継続）に倒す必要がある — このpatch不在ケースの
+ * 安全側判定はevaluateRisk側の責務である。
  *
  * @param {string|undefined} patch - unified diff形式のpatch文字列
  * @returns {boolean}
@@ -37,19 +40,21 @@ function evaluateRisk(files, config) {
   const actionsUpdateFiles = [];
 
   for (const f of files) {
-    const matched = config.lowRiskPatterns.find(({ pattern }) => pattern.test(f.filename));
+    const matches = config.lowRiskPatterns.filter(({ pattern }) => pattern.test(f.filename));
 
-    if (matched && matched.actionsUpdateExcluded && isActionsUpdateOnly(f.patch)) {
+    if (matches.length === 0) {
+      unknownFiles.push(f.filename);
+      continue;
+    }
+
+    const actionsUpdateExcluded = matches.some(m => m.actionsUpdateExcluded);
+    if (actionsUpdateExcluded && (!f.patch || isActionsUpdateOnly(f.patch))) {
       actionsUpdateFiles.push(f.filename);
       unknownFiles.push(f.filename);
       continue;
     }
 
-    if (matched) {
-      matchedCategories.add(matched.label);
-    } else {
-      unknownFiles.push(f.filename);
-    }
+    matchedCategories.add(matches[0].label);
   }
 
   const allLowRisk = files.length > 0 && unknownFiles.length === 0;

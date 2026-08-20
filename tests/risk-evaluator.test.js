@@ -157,6 +157,50 @@ describe('evaluateRisk', () => {
     expect(result.allLowRisk).toBe(true);
     expect(result.matchedCategories.has('ワークフロー')).toBe(true);
   });
+
+  test('回帰テスト C1: actions_update_excluded パターンで patch 欠落 → 安全側に倒す（excluded 扱い）', () => {
+    const customConfig = compileConfig({
+      low_risk_patterns: [
+        { pattern: '^\\.github/workflows/', label: 'ワークフロー', actions_update_excluded: true },
+      ],
+    });
+    const files = [
+      {
+        filename: '.github/workflows/ci.yml',
+        status: 'modified',
+        additions: 10,
+        deletions: 5,
+        patch: undefined, // patch 欠落 → 安全側に倒すべき
+      },
+    ];
+    const result = evaluateRisk(files, customConfig);
+    expect(result.actionsUpdateFiles).toEqual(['.github/workflows/ci.yml']);
+    expect(result.allLowRisk).toBe(false);
+    expect(result.unknownFiles).toEqual(['.github/workflows/ci.yml']);
+    expect(result.matchedCategories.has('ワークフロー')).toBe(false);
+  });
+
+  test('回帰テスト I2: 複数パターンマッチで、後の方が actions_update_excluded → 後の方のフラグを尊重', () => {
+    const customConfig = compileConfig({
+      low_risk_patterns: [
+        { pattern: '\\.yml$', label: '汎用YAML', actions_update_excluded: false },
+        { pattern: '^\\.github/workflows/', label: 'ワークフロー', actions_update_excluded: true },
+      ],
+    });
+    const files = [
+      {
+        filename: '.github/workflows/ci.yml',
+        status: 'modified',
+        additions: 1,
+        deletions: 1,
+        patch: '@@ -1,1 +1,1 @@\n-        uses: actions/checkout@abc123 # v6.0.0\n+        uses: actions/checkout@def456 # v7.0.0',
+      },
+    ];
+    const result = evaluateRisk(files, customConfig);
+    expect(result.actionsUpdateFiles).toEqual(['.github/workflows/ci.yml']);
+    expect(result.allLowRisk).toBe(false);
+    expect(result.unknownFiles).toEqual(['.github/workflows/ci.yml']);
+  });
 });
 
 describe('determineEligibility', () => {
