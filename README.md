@@ -32,6 +32,8 @@ jobs:
           - ^db/
           - ^Gemfile$
           - ^Gemfile\.lock$
+          - ^\.github/workflows/deploy\.yml$   # デプロイ系。利用リポジトリの実際のファイル名に置き換えること
+          - ^\.github/workflows/release\.yml$  # リリース系。利用リポジトリの実際のファイル名に置き換えること
         low_risk_patterns:
           - pattern: \.md$
             label: ドキュメント (Markdown)
@@ -43,6 +45,10 @@ jobs:
             label: RBS 型定義
           - pattern: ^\.claude/
             label: エージェント設定 (.claude/)
+          # 注意: high_risk_patterns にデプロイ・リリース系や、資格情報を使うworkflow
+          # （PAT・GitHub App秘密鍵・APIキー等）のファイル名を個別に列挙してから
+          # このパターンを有効にすること。列挙しなかった場合、それらのworkflow変更も
+          # 自動承認対象になる。
           - pattern: ^\.github/workflows/
             label: GitHub Actions ワークフロー
             actions_update_excluded: true
