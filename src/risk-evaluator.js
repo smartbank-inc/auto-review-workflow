@@ -1,62 +1,110 @@
 'use strict';
 
+const USES_LINE_PATTERN = /^[+-]\s*-?\s*uses:\s*\S+/;
+
 /**
- * ファイル一覧からリスク判定を行う。
+ * ワークフローファイルのdiffが、GitHub Actionsのバージョン参照（uses:）行の
+ * 変更のみで構成されているかを判定する。
+ * patchが取得できない場合はfalseを返す。
+ * 呼び出し側（evaluateRisk）で、actions_update_excludedなパターンに該当したファイルの
+ * patchが無い場合は安全側（要レビュー継続）に倒す必要がある — このpatch不在ケースの
+ * 安全側判定はevaluateRisk側の責務である。
  *
- * @param {string[]} filenames - 変更ファイルパス一覧
- * @param {{ highRiskPatterns: RegExp[], lowRiskPatterns: { pattern: RegExp, label: string }[] }} config
- * @returns {{ hasHighRisk: boolean, allLowRisk: boolean, highRiskFiles: string[], unknownFiles: string[], matchedCategories: Set<string> }}
+ * @param {string|undefined} patch - unified diff形式のpatch文字列
+ * @returns {boolean}
  */
-function evaluateRisk(filenames, config) {
-  const highRiskFiles = filenames.filter(f =>
-    config.highRiskPatterns.some(p => p.test(f))
-  );
+function isActionsUpdateOnly(patch) {
+  if (!patch) return false;
+  const changedLines = patch
+    .split('\n')
+    .filter(line => (line.startsWith('+') || line.startsWith('-')) && !line.startsWith('+++') && !line.startsWith('---'));
+  if (changedLines.length === 0) return false;
+  return changedLines.every(line => USES_LINE_PATTERN.test(line));
+}
+
+/**
+ * 変更ファイル一覧からリスク判定を行う。
+ *
+ * @param {{ filename: string, status: string, additions: number, deletions: number, patch?: string }[]} files
+ * @param {{ highRiskPatterns: RegExp[], lowRiskPatterns: { pattern: RegExp, label: string, actionsUpdateExcluded: boolean }[] }} config
+ * @returns {{ hasHighRisk: boolean, allLowRisk: boolean, highRiskFiles: string[], unknownFiles: string[], matchedCategories: Set<string>, actionsUpdateFiles: string[] }}
+ */
+function evaluateRisk(files, config) {
+  const highRiskFiles = files
+    .filter(f => config.highRiskPatterns.some(p => p.test(f.filename)))
+    .map(f => f.filename);
   const hasHighRisk = highRiskFiles.length > 0;
 
   const matchedCategories = new Set();
   const unknownFiles = [];
+  const actionsUpdateFiles = [];
 
-  for (const f of filenames) {
-    const matched = config.lowRiskPatterns.find(({ pattern }) => pattern.test(f));
-    if (matched) {
-      matchedCategories.add(matched.label);
-    } else {
-      unknownFiles.push(f);
+  for (const f of files) {
+    const matches = config.lowRiskPatterns.filter(({ pattern }) => pattern.test(f.filename));
+
+    if (matches.length === 0) {
+      unknownFiles.push(f.filename);
+      continue;
     }
+
+    const actionsUpdateExcluded = matches.some(m => m.actionsUpdateExcluded);
+    if (actionsUpdateExcluded && (!f.patch || isActionsUpdateOnly(f.patch))) {
+      actionsUpdateFiles.push(f.filename);
+      unknownFiles.push(f.filename);
+      continue;
+    }
+
+    matchedCategories.add(matches[0].label);
   }
 
-  const allLowRisk = filenames.length > 0 && unknownFiles.length === 0;
+  const allLowRisk = files.length > 0 && unknownFiles.length === 0;
 
-  return { hasHighRisk, allLowRisk, highRiskFiles, unknownFiles, matchedCategories };
+  return { hasHighRisk, allLowRisk, highRiskFiles, unknownFiles, matchedCategories, actionsUpdateFiles };
 }
 
 /**
  * 最終的な eligible 判定を行う。
  *
  * @param {boolean} isMember - チームメンバーかどうか
- * @param {{ hasHighRisk: boolean, allLowRisk: boolean, highRiskFiles: string[], unknownFiles: string[], matchedCategories: Set<string> }} riskResult
+ * @param {{ hasHighRisk: boolean, allLowRisk: boolean, highRiskFiles: string[], unknownFiles: string[], matchedCategories: Set<string>, actionsUpdateFiles: string[] }} riskResult
  * @param {string} actor - PR作成者のログイン名
  * @param {string} teamSlug - チームスラッグ名
+ * @param {{ matched: boolean, rule: string|null }} prShapeResult - PR形状ルールの判定結果
+ * @param {boolean} isReleaseBranch - リリースブランチ（develop→main等）向けのPRかどうか
  * @returns {{ eligible: boolean, reasons: string[] }}
  */
-function determineEligibility(isMember, riskResult, actor, teamSlug) {
-  const { hasHighRisk, allLowRisk, highRiskFiles, unknownFiles } = riskResult;
-  const eligible = isMember && !hasHighRisk && allLowRisk;
-
+function determineEligibility(isMember, riskResult, actor, teamSlug, prShapeResult, isReleaseBranch) {
+  const { hasHighRisk, allLowRisk, highRiskFiles, unknownFiles, actionsUpdateFiles } = riskResult;
   const reasons = [];
+
+  if (isReleaseBranch) {
+    reasons.push('- リリースブランチ向けのPRのため、自動承認の対象外です');
+    return { eligible: false, reasons };
+  }
+
   if (!isMember) {
     reasons.push(`- PR 作成者 (@${actor}) は \`${teamSlug}\` チームのメンバーではありません`);
   }
+
+  if (prShapeResult.matched && actionsUpdateFiles.length === 0) {
+    return { eligible: isMember, reasons: isMember ? [] : reasons };
+  }
+
   if (hasHighRisk) {
     reasons.push(`- ハイリスクファイルが ${highRiskFiles.length} 件含まれています`);
   }
-  if (!hasHighRisk && !allLowRisk && unknownFiles.length > 0) {
-    reasons.push(`- ローリスクに分類できないファイルが ${unknownFiles.length} 件含まれています`);
+  if (actionsUpdateFiles.length > 0) {
+    reasons.push(`- GitHub Actions のバージョン更新のみの変更が ${actionsUpdateFiles.length} 件含まれています（サプライチェーンリスクのため要レビュー）`);
   }
-  if (riskResult.hasHighRisk === false && riskResult.allLowRisk === false && unknownFiles.length === 0) {
+  const otherUnknownCount = unknownFiles.length - actionsUpdateFiles.length;
+  if (!hasHighRisk && !allLowRisk && otherUnknownCount > 0) {
+    reasons.push(`- ローリスクに分類できないファイルが ${otherUnknownCount} 件含まれています`);
+  }
+  if (!hasHighRisk && !allLowRisk && unknownFiles.length === 0) {
     reasons.push('- 変更ファイルがありません');
   }
 
+  const eligible = isMember && !hasHighRisk && allLowRisk;
   return { eligible, reasons };
 }
 
@@ -74,4 +122,4 @@ function formatFileList(files, limit = 10) {
   return remaining > 0 ? `${formatted} 他 ${remaining} 件` : formatted;
 }
 
-module.exports = { evaluateRisk, determineEligibility, escapeFilename, formatFileList };
+module.exports = { evaluateRisk, determineEligibility, escapeFilename, formatFileList, isActionsUpdateOnly };

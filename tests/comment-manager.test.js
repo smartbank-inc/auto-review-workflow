@@ -103,3 +103,67 @@ describe('buildSummary', () => {
     expect(summary).toContain(':x: いいえ');
   });
 });
+
+describe('buildApprovalBody（PR形状ルール該当時）', () => {
+  test('revert_titleに該当した場合、形状ルールの理由が表示される', () => {
+    const body = buildApprovalBody(
+      'user1', 'developer',
+      ['app/models/user.rb'], new Set(),
+      { matched: true, rule: 'revert_title' },
+    );
+
+    expect(body).toContain('Revert PR');
+    expect(body).toContain('`app/models/user.rb`');
+  });
+
+  test('deletion_onlyに該当した場合', () => {
+    const body = buildApprovalBody(
+      'user1', 'developer',
+      ['app/models/old.rb'], new Set(),
+      { matched: true, rule: 'deletion_only' },
+    );
+
+    expect(body).toContain('削除のみ');
+  });
+});
+
+describe('buildSummary（PR形状ルール・actions update該当時）', () => {
+  test('PR形状ルールに該当した場合、テーブルに表示される', () => {
+    const riskResult = {
+      hasHighRisk: true,
+      allLowRisk: false,
+      highRiskFiles: ['app/models/user.rb'],
+      unknownFiles: [],
+      matchedCategories: new Set(),
+      actionsUpdateFiles: [],
+    };
+    const summary = buildSummary(
+      true, 'user1', 'developer',
+      ['app/models/user.rb'], new Set(), [],
+      true, riskResult,
+      { matched: true, rule: 'rename_only' },
+    );
+
+    expect(summary).toContain('rename/moveのみ');
+  });
+
+  test('actions update除外ファイルがある場合、テーブルに件数が表示される', () => {
+    const riskResult = {
+      hasHighRisk: false,
+      allLowRisk: false,
+      highRiskFiles: [],
+      unknownFiles: ['.github/workflows/ci.yml'],
+      matchedCategories: new Set(),
+      actionsUpdateFiles: ['.github/workflows/ci.yml'],
+    };
+    const summary = buildSummary(
+      false, 'user1', 'developer',
+      ['.github/workflows/ci.yml'], new Set(), ['- GitHub Actions のバージョン更新のみの変更が 1 件含まれています'],
+      true, riskResult,
+      { matched: false, rule: null },
+    );
+
+    expect(summary).toContain('Actions update');
+    expect(summary).toContain(':x: 1 件');
+  });
+});

@@ -28,6 +28,11 @@ on:
         required: false
         default: "dependabot[bot],renovate[bot],devin-ai-integration[bot]"
         type: string
+      release-base-ref:
+        description: "このブランチ向けのPRは自動承認の対象外にする（空文字列で無効化）"
+        required: false
+        default: ""
+        type: string
     secrets:
       app-id:
         description: "GitHub App ID"
@@ -76,6 +81,7 @@ jobs:
           INPUT_ORG: ${{ inputs.org }}
           INPUT_LABEL_NAME: ${{ inputs.label-name }}
           INPUT_SKIP_ACTORS: ${{ inputs.skip-actors }}
+          INPUT_RELEASE_BASE_REF: ${{ inputs.release-base-ref }}
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
@@ -90,5 +96,6 @@ jobs:
                 org: process.env.INPUT_ORG,
                 labelName: process.env.INPUT_LABEL_NAME,
                 skipActors: process.env.INPUT_SKIP_ACTORS.split(',').map(s => s.trim()),
+                releaseBaseRef: process.env.INPUT_RELEASE_BASE_REF,
               },
             });

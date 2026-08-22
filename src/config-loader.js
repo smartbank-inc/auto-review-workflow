@@ -14,6 +14,7 @@ const DEFAULT_CONFIG = {
     { pattern: '^test/', label: 'テストコード' },
     { pattern: '\\.rbs$', label: 'RBS 型定義' },
   ],
+  pr_level_low_risk_rules: [],
 };
 
 /**
@@ -22,7 +23,7 @@ const DEFAULT_CONFIG = {
  *
  * @param {string} configString - YAML文字列
  * @param {{ info: Function, warning: Function }} [logger] - ログ出力（GitHub Actions core 互換）
- * @returns {{ highRiskPatterns: RegExp[], lowRiskPatterns: { pattern: RegExp, label: string }[] }}
+ * @returns {{ highRiskPatterns: RegExp[], lowRiskPatterns: { pattern: RegExp, label: string, actionsUpdateExcluded: boolean }[], prLevelLowRiskRules: string[] }}
  */
 function loadConfig(configString, logger) {
   const log = logger || { info: () => {}, warning: () => {} };
@@ -43,19 +44,29 @@ function loadConfig(configString, logger) {
  * 生の設定オブジェクトを正規表現にコンパイルする。
  *
  * @param {Object} raw
- * @returns {{ highRiskPatterns: RegExp[], lowRiskPatterns: { pattern: RegExp, label: string }[] }}
+ * @returns {{
+ *   highRiskPatterns: RegExp[],
+ *   lowRiskPatterns: { pattern: RegExp, label: string, actionsUpdateExcluded: boolean }[],
+ *   prLevelLowRiskRules: string[],
+ * }}
  */
 function compileConfig(raw) {
   const highRiskPatterns = (raw.high_risk_patterns || []).map(p => new RegExp(p));
 
   const lowRiskPatterns = (raw.low_risk_patterns || []).map(entry => {
     if (typeof entry === 'string') {
-      return { pattern: new RegExp(entry), label: entry };
+      return { pattern: new RegExp(entry), label: entry, actionsUpdateExcluded: false };
     }
-    return { pattern: new RegExp(entry.pattern), label: entry.label || entry.pattern };
+    return {
+      pattern: new RegExp(entry.pattern),
+      label: entry.label || entry.pattern,
+      actionsUpdateExcluded: entry.actions_update_excluded === true,
+    };
   });
 
-  return { highRiskPatterns, lowRiskPatterns };
+  const prLevelLowRiskRules = raw.pr_level_low_risk_rules || [];
+
+  return { highRiskPatterns, lowRiskPatterns, prLevelLowRiskRules };
 }
 
 module.exports = { loadConfig, compileConfig, DEFAULT_CONFIG };

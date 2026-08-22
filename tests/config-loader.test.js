@@ -86,3 +86,40 @@ describe('DEFAULT_CONFIG', () => {
     expect(config.lowRiskPatterns.length).toBeGreaterThan(0);
   });
 });
+
+describe('pr_level_low_risk_rules', () => {
+  test('未指定の場合は空配列', () => {
+    const config = compileConfig({});
+    expect(config.prLevelLowRiskRules).toEqual([]);
+  });
+
+  test('指定した配列がそのまま渡される', () => {
+    const config = compileConfig({
+      pr_level_low_risk_rules: ['revert_title', 'deletion_only'],
+    });
+    expect(config.prLevelLowRiskRules).toEqual(['revert_title', 'deletion_only']);
+  });
+});
+
+describe('low_risk_patterns の actions_update_excluded', () => {
+  test('actions_update_excluded: true が actionsUpdateExcluded にマップされる', () => {
+    const config = compileConfig({
+      low_risk_patterns: [
+        { pattern: '^\\.github/workflows/', label: 'ワークフロー', actions_update_excluded: true },
+      ],
+    });
+    expect(config.lowRiskPatterns[0].actionsUpdateExcluded).toBe(true);
+  });
+
+  test('未指定の場合は false', () => {
+    const config = compileConfig({
+      low_risk_patterns: [{ pattern: '\\.md$', label: 'Markdown' }],
+    });
+    expect(config.lowRiskPatterns[0].actionsUpdateExcluded).toBe(false);
+  });
+
+  test('文字列のみのエントリでも false', () => {
+    const config = compileConfig({ low_risk_patterns: ['\\.md$'] });
+    expect(config.lowRiskPatterns[0].actionsUpdateExcluded).toBe(false);
+  });
+});

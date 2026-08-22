@@ -30,9 +30,10 @@ jobs:
           - ^lib/
           - ^config/
           - ^db/
-          - ^\.github/
           - ^Gemfile$
           - ^Gemfile\.lock$
+          - ^\.github/workflows/deploy\.yml$   # デプロイ系。利用リポジトリの実際のファイル名に置き換えること
+          - ^\.github/workflows/release\.yml$  # リリース系。利用リポジトリの実際のファイル名に置き換えること
         low_risk_patterns:
           - pattern: \.md$
             label: ドキュメント (Markdown)
@@ -42,6 +43,19 @@ jobs:
             label: テストコード
           - pattern: \.rbs$
             label: RBS 型定義
+          - pattern: ^\.claude/
+            label: エージェント設定 (.claude/)
+          # 注意: high_risk_patterns にデプロイ・リリース系や、資格情報を使うworkflow
+          # （PAT・GitHub App秘密鍵・APIキー等）のファイル名を個別に列挙してから
+          # このパターンを有効にすること。列挙しなかった場合、それらのworkflow変更も
+          # 自動承認対象になる。
+          - pattern: ^\.github/workflows/
+            label: GitHub Actions ワークフロー
+            actions_update_excluded: true
+        pr_level_low_risk_rules:
+          - revert_title
+          - deletion_only
+          - rename_only
     secrets:
       app-id: ${{ secrets.SMARTBANK_AUTO_MERGE_BOT_APP_ID }}
       app-private-key: ${{ secrets.SMARTBANK_AUTO_MERGE_BOT_PRIVATE_KEY }}
@@ -63,11 +77,22 @@ jobs:
 
 ## 判定ロジック
 
-以下の条件を **すべて** 満たす場合、レビュー不要と判定します:
+以下のいずれかを満たす場合、レビュー不要と判定します:
 
-1. PR 作成者が指定チームのメンバーである
-2. 高リスクパターンに該当するファイルが **1 つもない**
-3. すべての変更ファイルが低リスクパターンの **いずれかに該当する**
+1. **リリースブランチ向けPRでなく**、かつ PR 作成者が指定チームのメンバーであり、かつ
+   - **PR形状ルール**（`pr_level_low_risk_rules`）のいずれかに該当する（高リスクパスより優先）
+     - `revert_title`: PRタイトルが GitHub標準の `Revert "..."` 形式
+     - `deletion_only`: 全変更ファイルが追加行なし（削除のみ）
+     - `rename_only`: 全変更ファイルが内容変更を伴わない rename/move のみ
+   - または、上記に該当せず、かつ
+     - 高リスクパターンに該当するファイルが **1 つもない**
+     - すべての変更ファイルが低リスクパターンの **いずれかに該当する**
+     - `actions_update_excluded: true` な低リスクパターンに該当したファイルは、
+       diffが GitHub Actions のバージョン参照（`uses:`）行の変更のみの場合、
+       低リスク扱いから除外される（サプライチェーンリスクのため）
+
+**新設**: develop→main のようなリリースブランチへのPRは、`release-base-ref`
+（デフォルト `main`）に一致する場合、上記のどの条件にも関わらず対象外になります。
 
 ## Inputs
 
@@ -78,6 +103,7 @@ jobs:
 | `org`         | `smartbank-inc`                                           | GitHub Organization 名                      |
 | `label-name`  | `auto-review`                                             | 付与するラベル名                            |
 | `skip-actors` | `dependabot[bot],renovate[bot],devin-ai-integration[bot]` | スキップする actor（カンマ区切り）          |
+| `release-base-ref` | `main`                                                     | このブランチ向けのPRを自動承認対象外にする（空文字列で無効化） |
 
 ## デフォルトルール
 
