@@ -3,23 +3,30 @@
 const USES_LINE_PATTERN = /^[+-]\s*-?\s*uses:\s*\S+/;
 
 /**
- * ワークフローファイルのdiffが、GitHub Actionsのバージョン参照（uses:）行の
- * 変更のみで構成されているかを判定する。
+ * ワークフローファイルのdiffに、GitHub Actionsのバージョン参照（uses:）行の変更が
+ * 1行でも含まれているかを判定する。
  * patchが取得できない場合はfalseを返す。
  * 呼び出し側（evaluateRisk）で、actions_update_excludedなパターンに該当したファイルの
  * patchが無い場合は安全側（要レビュー継続）に倒す必要がある — このpatch不在ケースの
  * 安全側判定はevaluateRisk側の責務である。
  *
+ * 以前は「diff全体がuses:行の変更のみ」であることを要求していた（every）。これだと
+ * uses:のピン変更に無害な1行（コメント追加・空行・別ステップの軽微な編集など）を
+ * 添えるだけでactions_update_excludedによる除外を回避できてしまい、このガードが
+ * 防ぐはずのサプライチェーンリスクをまさに通してしまう抜け道になっていた。除外の
+ * 要否はdiffの純度ではなくuses:行の変更が存在するかどうかで決めるべきなので、判定を
+ * every から some に変更している。
+ *
  * @param {string|undefined} patch - unified diff形式のpatch文字列
  * @returns {boolean}
  */
-function isActionsUpdateOnly(patch) {
+function containsActionsVersionChange(patch) {
   if (!patch) return false;
   const changedLines = patch
     .split('\n')
     .filter(line => (line.startsWith('+') || line.startsWith('-')) && !line.startsWith('+++') && !line.startsWith('---'));
   if (changedLines.length === 0) return false;
-  return changedLines.every(line => USES_LINE_PATTERN.test(line));
+  return changedLines.some(line => USES_LINE_PATTERN.test(line));
 }
 
 /**
@@ -48,7 +55,7 @@ function evaluateRisk(files, config) {
     }
 
     const actionsUpdateExcluded = matches.some(m => m.actionsUpdateExcluded);
-    if (actionsUpdateExcluded && (!f.patch || isActionsUpdateOnly(f.patch))) {
+    if (actionsUpdateExcluded && (!f.patch || containsActionsVersionChange(f.patch))) {
       actionsUpdateFiles.push(f.filename);
       unknownFiles.push(f.filename);
       continue;
@@ -94,7 +101,7 @@ function determineEligibility(isMember, riskResult, actor, teamSlug, prShapeResu
     reasons.push(`- ハイリスクファイルが ${highRiskFiles.length} 件含まれています`);
   }
   if (actionsUpdateFiles.length > 0) {
-    reasons.push(`- GitHub Actions のバージョン更新のみの変更が ${actionsUpdateFiles.length} 件含まれています（サプライチェーンリスクのため要レビュー）`);
+    reasons.push(`- GitHub Actions のバージョン参照（uses:）の変更を含むファイルが ${actionsUpdateFiles.length} 件含まれています（サプライチェーンリスクのため要レビュー）`);
   }
   const otherUnknownCount = unknownFiles.length - actionsUpdateFiles.length;
   if (!hasHighRisk && !allLowRisk && otherUnknownCount > 0) {
@@ -122,4 +129,4 @@ function formatFileList(files, limit = 10) {
   return remaining > 0 ? `${formatted} 他 ${remaining} 件` : formatted;
 }
 
-module.exports = { evaluateRisk, determineEligibility, escapeFilename, formatFileList, isActionsUpdateOnly };
+module.exports = { evaluateRisk, determineEligibility, escapeFilename, formatFileList, containsActionsVersionChange };

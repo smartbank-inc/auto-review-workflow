@@ -1,6 +1,6 @@
 'use strict';
 
-const { evaluateRisk, determineEligibility, escapeFilename, formatFileList, isActionsUpdateOnly } = require('../src/risk-evaluator');
+const { evaluateRisk, determineEligibility, escapeFilename, formatFileList, containsActionsVersionChange } = require('../src/risk-evaluator');
 const { compileConfig, DEFAULT_CONFIG } = require('../src/config-loader');
 
 const config = compileConfig(DEFAULT_CONFIG);
@@ -137,7 +137,9 @@ describe('evaluateRisk', () => {
     expect(result.matchedCategories.has('ワークフロー')).toBe(false);
   });
 
-  test('actions_update_excluded な低リスクパターンでも、uses:以外の変更が混在すれば通常通り低リスク扱い', () => {
+  test('回帰テスト P1: actions_update_excluded パターンで、uses:以外の変更が混在していても除外される（部分バイパス修正）', () => {
+    // 以前は diff 全体が uses: 行のみでないと除外されず、uses: のピン変更に無害な1行
+    // （ここでは別ステップの追加）を混ぜるだけでガードを回避できてしまっていた。
     const customConfig = compileConfig({
       low_risk_patterns: [
         { pattern: '^\\.github/workflows/', label: 'ワークフロー', actions_update_excluded: true },
@@ -153,9 +155,10 @@ describe('evaluateRisk', () => {
       },
     ];
     const result = evaluateRisk(files, customConfig);
-    expect(result.actionsUpdateFiles).toEqual([]);
-    expect(result.allLowRisk).toBe(true);
-    expect(result.matchedCategories.has('ワークフロー')).toBe(true);
+    expect(result.actionsUpdateFiles).toEqual(['.github/workflows/ci.yml']);
+    expect(result.allLowRisk).toBe(false);
+    expect(result.unknownFiles).toEqual(['.github/workflows/ci.yml']);
+    expect(result.matchedCategories.has('ワークフロー')).toBe(false);
   });
 
   test('回帰テスト C1: actions_update_excluded パターンで patch 欠落 → 安全側に倒す（excluded 扱い）', () => {
@@ -324,7 +327,7 @@ describe('formatFileList', () => {
   });
 });
 
-describe('isActionsUpdateOnly', () => {
+describe('containsActionsVersionChange', () => {
   test('uses:行のバージョン更新のみ → true', () => {
     const patch = [
       '@@ -10,7 +10,7 @@',
@@ -332,25 +335,34 @@ describe('isActionsUpdateOnly', () => {
       '-        uses: actions/checkout@abc123 # v6.0.0',
       '+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
     ].join('\n');
-    expect(isActionsUpdateOnly(patch)).toBe(true);
+    expect(containsActionsVersionChange(patch)).toBe(true);
   });
 
-  test('uses:行以外の変更が混在 → false', () => {
+  test('uses:行の変更に他の変更が混在していても → true（部分バイパス修正）', () => {
     const patch = [
       '@@ -10,7 +10,8 @@',
       '-        uses: actions/checkout@abc123 # v6.0.0',
       '+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
       '+      - run: echo hello',
     ].join('\n');
-    expect(isActionsUpdateOnly(patch)).toBe(false);
+    expect(containsActionsVersionChange(patch)).toBe(true);
+  });
+
+  test('uses:行の変更が1つも無ければ → false', () => {
+    const patch = [
+      '@@ -10,7 +10,8 @@',
+      '-      - run: echo old',
+      '+      - run: echo new',
+    ].join('\n');
+    expect(containsActionsVersionChange(patch)).toBe(false);
   });
 
   test('patchがundefined（大きすぎるファイル等）→ false', () => {
-    expect(isActionsUpdateOnly(undefined)).toBe(false);
+    expect(containsActionsVersionChange(undefined)).toBe(false);
   });
 
   test('変更行が1つもない（ヘッダのみ）→ false', () => {
-    expect(isActionsUpdateOnly('@@ -1,3 +1,3 @@\n context line')).toBe(false);
+    expect(containsActionsVersionChange('@@ -1,3 +1,3 @@\n context line')).toBe(false);
   });
 
   test('@を含まないuses:行（docker参照等）のバージョン更新のみ → true', () => {
@@ -359,6 +371,6 @@ describe('isActionsUpdateOnly', () => {
       '-        uses: docker://alpine:3.18',
       '+        uses: docker://alpine:3.19',
     ].join('\n');
-    expect(isActionsUpdateOnly(patch)).toBe(true);
+    expect(containsActionsVersionChange(patch)).toBe(true);
   });
 });
