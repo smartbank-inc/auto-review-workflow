@@ -84,6 +84,9 @@ jobs:
      - `revert_title`: PRタイトルが GitHub標準の `Revert "..."` 形式
      - `deletion_only`: 全変更ファイルが追加行なし（削除のみ）
      - `rename_only`: 全変更ファイルが内容変更を伴わない rename/move のみ
+   - **AI判定**（`ai-verdict-matched`等）: 呼び出し元のworkflowがAgentic Workflow等で
+     判定した結果を渡す。該当する場合、PR形状ルールと同様に高リスクパスより優先される
+     （ただし actions update のみの変更は除く）
    - または、上記に該当せず、かつ
      - 高リスクパターンに該当するファイルが **1 つもない**
      - すべての変更ファイルが低リスクパターンの **いずれかに該当する**
@@ -104,6 +107,9 @@ jobs:
 | `label-name`  | `auto-review`                                             | 付与するラベル名                            |
 | `skip-actors` | `dependabot[bot],renovate[bot],devin-ai-integration[bot]` | スキップする actor（カンマ区切り）          |
 | `release-base-ref` | `main`                                                     | このブランチ向けのPRを自動承認対象外にする（空文字列で無効化） |
+| `ai-verdict-matched`  | `false`                                                    | AI判定で該当したか（呼び出し元workflowが渡す） |
+| `ai-verdict-category` | `""`                                                       | AI判定で該当したカテゴリ名 |
+| `ai-verdict-reason`   | `""`                                                       | AI判定の理由 |
 
 ## デフォルトルール
 

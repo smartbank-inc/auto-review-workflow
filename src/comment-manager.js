@@ -18,15 +18,25 @@ const PR_SHAPE_RULE_LABELS = {
  * @param {string[]} filenames - 変更ファイル一覧
  * @param {Set<string>} matchedCategories - 該当した低リスクカテゴリ
  * @param {{ matched: boolean, rule: string|null }} [prShapeResult] - PR形状ルールの判定結果
+ * @param {{ matched: boolean, category: string|null, reason: string|null }} [aiVerdict] - AI判定結果
+ * @param {'pr_shape'|'ai_verdict'|'mechanical'|null} [eligibleVia] - determineEligibilityが返す確定経路。
+ *   指定時はこちらを優先する。未指定時は prShapeResult/aiVerdict から独自に導出する（後方互換）
  * @returns {string} review body
  */
-function buildApprovalBody(actor, teamSlug, filenames, matchedCategories, prShapeResult) {
+function buildApprovalBody(actor, teamSlug, filenames, matchedCategories, prShapeResult, aiVerdict, eligibleVia) {
   const fileList = filenames.map(f => `- \`${escapeFilename(f)}\``).join('\n');
 
+  const via = eligibleVia !== undefined
+    ? eligibleVia
+    : (prShapeResult && prShapeResult.matched ? 'pr_shape' : (aiVerdict && aiVerdict.matched ? 'ai_verdict' : null));
+
   const reasonLines = [];
-  if (prShapeResult && prShapeResult.matched) {
+  if (via === 'pr_shape') {
     const ruleLabel = PR_SHAPE_RULE_LABELS[prShapeResult.rule] || prShapeResult.rule;
     reasonLines.push(`- PR形状ルール「${ruleLabel}」に該当しました（高リスクパスの判定より優先されます）`);
+  } else if (via === 'ai_verdict') {
+    reasonLines.push(`- AI判定によりカテゴリ「${aiVerdict.category}」に該当しました（高リスクパスの判定より優先されます）`);
+    reasonLines.push(`- 判定理由: ${aiVerdict.reason}`);
   } else {
     const categories = [...matchedCategories].join(', ');
     reasonLines.push('- 高リスクファイルは含まれていません');
@@ -53,10 +63,15 @@ function buildApprovalBody(actor, teamSlug, filenames, matchedCategories, prShap
  * Job Summary 用の Markdown を生成する。
  *
  * @param {{ matched: boolean, rule: string|null }} [prShapeResult] - PR形状ルールの判定結果
+ * @param {{ matched: boolean, category: string|null, reason: string|null }} [aiVerdict] - AI判定結果
+ * @param {'pr_shape'|'ai_verdict'|'mechanical'|null} [eligibleVia] - determineEligibilityが返す確定経路
  */
-function buildSummary(eligible, actor, teamSlug, filenames, matchedCategories, reasons, isMember, riskResult, prShapeResult) {
+function buildSummary(eligible, actor, teamSlug, filenames, matchedCategories, reasons, isMember, riskResult, prShapeResult, aiVerdict, eligibleVia) {
   const lines = [];
   const actionsUpdateFiles = riskResult.actionsUpdateFiles || [];
+  const via = eligibleVia !== undefined
+    ? eligibleVia
+    : (prShapeResult && prShapeResult.matched ? 'pr_shape' : (aiVerdict && aiVerdict.matched ? 'ai_verdict' : null));
 
   if (eligible) {
     lines.push('## :white_check_mark: ヒューマンレビュー不要');
@@ -69,7 +84,8 @@ function buildSummary(eligible, actor, teamSlug, filenames, matchedCategories, r
   lines.push('|------|------|');
   lines.push(`| PR 作成者 | @${actor} |`);
   lines.push(`| チームメンバー | ${isMember ? ':white_check_mark: はい' : ':x: いいえ'} |`);
-  lines.push(`| PR形状ルール | ${prShapeResult && prShapeResult.matched ? `:white_check_mark: ${PR_SHAPE_RULE_LABELS[prShapeResult.rule] || prShapeResult.rule}` : ':heavy_minus_sign: 該当なし'} |`);
+  lines.push(`| PR形状ルール | ${via === 'pr_shape' ? `:white_check_mark: ${PR_SHAPE_RULE_LABELS[prShapeResult.rule] || prShapeResult.rule}` : ':heavy_minus_sign: 該当なし'} |`);
+  lines.push(`| AI判定 | ${via === 'ai_verdict' ? `:white_check_mark: ${aiVerdict.category}` : ':heavy_minus_sign: 該当なし'} |`);
   lines.push(`| 高リスクファイル | ${riskResult.hasHighRisk ? `:x: ${riskResult.highRiskFiles.length} 件` : ':white_check_mark: なし'} |`);
   lines.push(`| Actions update除外ファイル | ${actionsUpdateFiles.length > 0 ? `:x: ${actionsUpdateFiles.length} 件` : ':white_check_mark: なし'} |`);
   lines.push(`| 全ファイル低リスク | ${riskResult.allLowRisk ? ':white_check_mark: はい' : ':x: いいえ'} |`);

@@ -71,23 +71,32 @@ function evaluateRisk(files, config) {
  * @param {string} teamSlug - チームスラッグ名
  * @param {{ matched: boolean, rule: string|null }} prShapeResult - PR形状ルールの判定結果
  * @param {boolean} isReleaseBranch - リリースブランチ（develop→main等）向けのPRかどうか
- * @returns {{ eligible: boolean, reasons: string[] }}
+ * @param {{ matched: boolean, category: string|null, reason: string|null }} [aiVerdict] - AI判定結果。未指定時は既存動作と完全互換
+ * @returns {{ eligible: boolean, reasons: string[], eligibleVia: 'pr_shape'|'ai_verdict'|'mechanical'|null }} eligibleVia は eligible=true の場合にどの経路で確定したかを示す。eligible=false の場合は null
  */
-function determineEligibility(isMember, riskResult, actor, teamSlug, prShapeResult, isReleaseBranch) {
+function determineEligibility(isMember, riskResult, actor, teamSlug, prShapeResult, isReleaseBranch, aiVerdict) {
   const { hasHighRisk, allLowRisk, highRiskFiles, unknownFiles, actionsUpdateFiles } = riskResult;
   const reasons = [];
 
   if (isReleaseBranch) {
     reasons.push('- リリースブランチ向けのPRのため、自動承認の対象外です');
-    return { eligible: false, reasons };
+    return { eligible: false, reasons, eligibleVia: null };
   }
 
   if (!isMember) {
     reasons.push(`- PR 作成者 (@${actor}) は \`${teamSlug}\` チームのメンバーではありません`);
   }
 
+  // PR形状ルール（revert/削除のみ/renameのみ）は高リスクパス判定より優先する。
+  // ただし actions update のみの変更（サプライチェーンリスク）はバイパスしない。
   if (prShapeResult.matched && actionsUpdateFiles.length === 0) {
-    return { eligible: isMember, reasons: isMember ? [] : reasons };
+    return { eligible: isMember, reasons: isMember ? [] : reasons, eligibleVia: isMember ? 'pr_shape' : null };
+  }
+
+  // AI判定も同様に高リスクパス判定より優先する。
+  // actions update のみの変更はバイパスしない（PR形状ルールと同じ制約）。
+  if (aiVerdict && aiVerdict.matched === true && actionsUpdateFiles.length === 0) {
+    return { eligible: isMember, reasons: isMember ? [] : reasons, eligibleVia: isMember ? 'ai_verdict' : null };
   }
 
   if (hasHighRisk) {
@@ -105,7 +114,7 @@ function determineEligibility(isMember, riskResult, actor, teamSlug, prShapeResu
   }
 
   const eligible = isMember && !hasHighRisk && allLowRisk;
-  return { eligible, reasons };
+  return { eligible, reasons, eligibleVia: eligible ? 'mechanical' : null };
 }
 
 /**
