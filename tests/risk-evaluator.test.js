@@ -299,6 +299,101 @@ describe('determineEligibility', () => {
     expect(eligible).toBe(false);
     expect(reasons.some(r => r.includes('Actions'))).toBe(true);
   });
+
+  test('aiVerdictが該当（matched:true）→ 高リスクパスを含んでいても eligible', () => {
+    const riskResult = evaluateRisk(toFiles(['app/models/user.rb']), config);
+    const aiVerdict = { matched: true, category: 'local_refactor', reason: 'リネームのみ' };
+    const { eligible, reasons } = determineEligibility(true, riskResult, 'user1', 'developer', noShapeMatch, false, aiVerdict);
+    expect(eligible).toBe(true);
+    expect(reasons).toHaveLength(0);
+  });
+
+  test('aiVerdictが該当していても非メンバーなら not eligible', () => {
+    const riskResult = evaluateRisk(toFiles(['app/models/user.rb']), config);
+    const aiVerdict = { matched: true, category: 'local_refactor', reason: 'リネームのみ' };
+    const { eligible, reasons } = determineEligibility(false, riskResult, 'user1', 'developer', noShapeMatch, false, aiVerdict);
+    expect(eligible).toBe(false);
+    expect(reasons[0]).toContain('メンバーではありません');
+  });
+
+  test('aiVerdictが該当していても actions update除外ファイルがあれば not eligible', () => {
+    const customConfig = compileConfig({
+      low_risk_patterns: [
+        { pattern: '^\\.github/workflows/', label: 'ワークフロー', actions_update_excluded: true },
+      ],
+    });
+    const files = [
+      {
+        filename: '.github/workflows/ci.yml',
+        status: 'modified',
+        additions: 1,
+        deletions: 1,
+        patch: '@@ -1,1 +1,1 @@\n-        uses: actions/checkout@abc123 # v6.0.0\n+        uses: actions/checkout@def456 # v7.0.0',
+      },
+    ];
+    const riskResult = evaluateRisk(files, customConfig);
+    const aiVerdict = { matched: true, category: 'local_refactor', reason: '...' };
+    const { eligible, reasons } = determineEligibility(true, riskResult, 'user1', 'developer', noShapeMatch, false, aiVerdict);
+    expect(eligible).toBe(false);
+    expect(reasons.some(r => r.includes('Actions'))).toBe(true);
+  });
+
+  test('aiVerdictが未指定（undefined）でも既存動作と互換（後方互換）', () => {
+    const riskResult = evaluateRisk(toFiles(['docs/README.md']), config);
+    const { eligible, reasons } = determineEligibility(true, riskResult, 'user1', 'developer', noShapeMatch, false);
+    expect(eligible).toBe(true);
+    expect(reasons).toHaveLength(0);
+  });
+
+  test('aiVerdict.matched が false なら通常判定にフォールスルーする', () => {
+    const riskResult = evaluateRisk(toFiles(['app/models/user.rb']), config);
+    const aiVerdict = { matched: false, category: null, reason: null };
+    const { eligible, reasons } = determineEligibility(true, riskResult, 'user1', 'developer', noShapeMatch, false, aiVerdict);
+    expect(eligible).toBe(false);
+    expect(reasons[0]).toContain('ハイリスクファイルが 1 件');
+  });
+
+  test('リリースブランチ向けPRは aiVerdict が該当していても not eligible', () => {
+    const riskResult = evaluateRisk(toFiles(['app/models/user.rb']), config);
+    const aiVerdict = { matched: true, category: 'local_refactor', reason: '...' };
+    const { eligible, reasons } = determineEligibility(true, riskResult, 'user1', 'developer', noShapeMatch, true, aiVerdict);
+    expect(eligible).toBe(false);
+    expect(reasons[0]).toContain('リリースブランチ');
+  });
+
+  test('eligibleVia: PR形状ルールで確定した場合は pr_shape', () => {
+    const riskResult = evaluateRisk(toFiles(['app/models/user.rb']), config);
+    const shapeMatch = { matched: true, rule: 'revert_title' };
+    const { eligibleVia } = determineEligibility(true, riskResult, 'user1', 'developer', shapeMatch, false);
+    expect(eligibleVia).toBe('pr_shape');
+  });
+
+  test('eligibleVia: AI判定で確定した場合は ai_verdict', () => {
+    const riskResult = evaluateRisk(toFiles(['app/models/user.rb']), config);
+    const aiVerdict = { matched: true, category: 'local_refactor', reason: '...' };
+    const { eligibleVia } = determineEligibility(true, riskResult, 'user1', 'developer', noShapeMatch, false, aiVerdict);
+    expect(eligibleVia).toBe('ai_verdict');
+  });
+
+  test('eligibleVia: 両方matched:trueの場合、prShapeResultが優先されるため pr_shape', () => {
+    const riskResult = evaluateRisk(toFiles(['app/models/user.rb']), config);
+    const shapeMatch = { matched: true, rule: 'deletion_only' };
+    const aiVerdict = { matched: true, category: 'local_refactor', reason: '...' };
+    const { eligibleVia } = determineEligibility(true, riskResult, 'user1', 'developer', shapeMatch, false, aiVerdict);
+    expect(eligibleVia).toBe('pr_shape');
+  });
+
+  test('eligibleVia: 通常の低リスク判定で確定した場合は mechanical', () => {
+    const riskResult = evaluateRisk(toFiles(['docs/README.md']), config);
+    const { eligibleVia } = determineEligibility(true, riskResult, 'user1', 'developer', noShapeMatch, false);
+    expect(eligibleVia).toBe('mechanical');
+  });
+
+  test('eligibleVia: not eligible の場合は null', () => {
+    const riskResult = evaluateRisk(toFiles(['app/models/user.rb']), config);
+    const { eligibleVia } = determineEligibility(true, riskResult, 'user1', 'developer', noShapeMatch, false);
+    expect(eligibleVia).toBe(null);
+  });
 });
 
 describe('escapeFilename', () => {

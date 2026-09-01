@@ -167,3 +167,80 @@ describe('buildSummary（PR形状ルール・actions update該当時）', () => 
     expect(summary).toContain(':x: 1 件');
   });
 });
+
+describe('buildApprovalBody（AI判定該当時）', () => {
+  test('aiVerdictに該当した場合、AI判定の理由が表示される', () => {
+    const aiVerdict = { matched: true, category: 'local_refactor', reason: 'リネームのみで挙動不変' };
+    const body = buildApprovalBody(
+      'user1', 'developer',
+      ['app/models/user.rb'], new Set(),
+      { matched: false, rule: null }, aiVerdict,
+    );
+
+    expect(body).toContain('AI判定');
+    expect(body).toContain('local_refactor');
+    expect(body).toContain('リネームのみで挙動不変');
+    expect(body).toContain('`app/models/user.rb`');
+  });
+
+  test('prShapeResultとaiVerdictが両方matched:falseなら従来通りカテゴリ表示', () => {
+    const matchedCategories = new Set(['ドキュメント (Markdown)']);
+    const body = buildApprovalBody(
+      'user1', 'developer',
+      ['docs/README.md'], matchedCategories,
+      { matched: false, rule: null }, { matched: false, category: null, reason: null },
+    );
+
+    expect(body).toContain('ドキュメント (Markdown)');
+    expect(body).not.toContain('AI判定');
+  });
+});
+
+describe('buildSummary（AI判定該当時）', () => {
+  test('aiVerdictに該当した場合、テーブルに表示される', () => {
+    const riskResult = {
+      hasHighRisk: true,
+      allLowRisk: false,
+      highRiskFiles: ['app/models/user.rb'],
+      unknownFiles: [],
+      matchedCategories: new Set(),
+      actionsUpdateFiles: [],
+    };
+    const aiVerdict = { matched: true, category: 'comment_only', reason: 'コメントのみの変更' };
+    const summary = buildSummary(
+      true, 'user1', 'developer',
+      ['app/models/user.rb'], new Set(), [],
+      true, riskResult,
+      { matched: false, rule: null }, aiVerdict,
+    );
+
+    expect(summary).toContain('comment_only');
+    expect(summary).toContain('AI判定');
+  });
+});
+
+describe('eligibleVia が渡された場合（優先される）', () => {
+  test('prShapeResultがmatchedでも、eligibleViaがai_verdictならAI判定の理由が表示される', () => {
+    const aiVerdict = { matched: true, category: 'local_refactor', reason: '理由' };
+    const body = buildApprovalBody(
+      'user1', 'developer',
+      ['app/models/user.rb'], new Set(),
+      { matched: true, rule: 'revert_title' }, aiVerdict, 'ai_verdict',
+    );
+    expect(body).toContain('AI判定');
+    expect(body).not.toContain('PR形状ルール');
+  });
+
+  test('buildSummaryでも同様にeligibleViaが優先される', () => {
+    const riskResult = {
+      hasHighRisk: false, allLowRisk: true, highRiskFiles: [], unknownFiles: [],
+      matchedCategories: new Set(), actionsUpdateFiles: [],
+    };
+    const aiVerdict = { matched: true, category: 'comment_only', reason: '...' };
+    const summary = buildSummary(
+      true, 'user1', 'developer', ['docs/README.md'], new Set(), [],
+      true, riskResult, { matched: true, rule: 'revert_title' }, aiVerdict, 'ai_verdict',
+    );
+    expect(summary).toContain('comment_only');
+  });
+});

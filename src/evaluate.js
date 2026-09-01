@@ -7,12 +7,17 @@ const { ensureLabel, syncLabel } = require('./label-manager');
 const { syncReview } = require('./review-manager');
 const { buildApprovalBody, buildSummary } = require('./comment-manager');
 
+const AI_LABEL_NAME = 'auto-review:ai';
+
 /**
  * github-script から呼ばれるメインエントリポイント。
  * PR のリスク評価 → ラベル管理 → 自動承認 → コメントを一貫して実行する。
  */
 async function evaluate({ github, context, core, inputs }) {
-  const { configString, teamSlug, org, labelName, skipActors, releaseBaseRef } = inputs;
+  const {
+    configString, teamSlug, org, labelName, skipActors, releaseBaseRef,
+    aiVerdictMatched, aiVerdictCategory, aiVerdictReason,
+  } = inputs;
   const prNumber = context.payload.pull_request.number;
   const owner = context.repo.owner;
   const repo = context.repo.repo;
@@ -64,25 +69,46 @@ async function evaluate({ github, context, core, inputs }) {
   const config = loadConfig(configString, core);
   const riskResult = evaluateRisk(files, config);
   const prShapeResult = evaluatePrShape(files, title, config.prLevelLowRiskRules);
-  const { eligible, reasons } = determineEligibility(isMember, riskResult, actor, teamSlug, prShapeResult, isReleaseBranch);
+  // AI判定結果（呼び出し元のワークフローが外部のAIエージェント等による分類結果をinputとして渡す）
+  const aiVerdict = {
+    matched: aiVerdictMatched === 'true',
+    category: aiVerdictCategory || null,
+    reason: aiVerdictReason || null,
+  };
+  const { eligible, reasons, eligibleVia } = determineEligibility(
+    isMember, riskResult, actor, teamSlug, prShapeResult, isReleaseBranch, aiVerdict,
+  );
 
   // ── 5. ラベル管理 ──
   await ensureLabel(github, owner, repo, labelName);
   await syncLabel(github, owner, repo, prNumber, labelName, eligible);
 
+  // AI判定が eligible の決め手だった場合のみ、事後分析用の第2ラベルを付与する。
+  // ラベル操作の失敗が自動承認取り消し（syncReview）をブロックしないよう、
+  // try/catchで囲みwarningに留める（fail-open防止）。
+  const aiApproved = eligibleVia === 'ai_verdict';
+  try {
+    if (aiApproved) {
+      await ensureLabel(github, owner, repo, AI_LABEL_NAME);
+    }
+    await syncLabel(github, owner, repo, prNumber, AI_LABEL_NAME, aiApproved);
+  } catch (error) {
+    core.warning(`auto-review:ai ラベルの同期に失敗しました: ${error.message}`);
+  }
+
   // ── 6. 自動承認 / 取り消し（eligible 時は review body に判定詳細を載せる） ──
   const approvalBody = eligible
-    ? buildApprovalBody(actor, teamSlug, filenames, riskResult.matchedCategories, prShapeResult)
+    ? buildApprovalBody(actor, teamSlug, filenames, riskResult.matchedCategories, prShapeResult, aiVerdict, eligibleVia)
     : '';
   await syncReview(github, owner, repo, prNumber, eligible, core, approvalBody);
 
   // ── 7. Job Summary ──
   const summary = buildSummary(
-    eligible, actor, teamSlug, filenames, riskResult.matchedCategories, reasons, isMember, riskResult, prShapeResult,
+    eligible, actor, teamSlug, filenames, riskResult.matchedCategories, reasons, isMember, riskResult, prShapeResult, aiVerdict, eligibleVia,
   );
   await core.summary.addRaw(summary).write();
 
-  core.info(`PR #${prNumber}: eligible=${eligible}, isMember=${isMember}, isReleaseBranch=${isReleaseBranch}, prShapeRule=${prShapeResult.rule}, hasHighRisk=${riskResult.hasHighRisk}, allLowRisk=${riskResult.allLowRisk}, files=${filenames.length}`);
+  core.info(`PR #${prNumber}: eligible=${eligible}, isMember=${isMember}, isReleaseBranch=${isReleaseBranch}, prShapeRule=${prShapeResult.rule}, aiVerdictMatched=${aiVerdict.matched}, hasHighRisk=${riskResult.hasHighRisk}, allLowRisk=${riskResult.allLowRisk}, files=${filenames.length}`);
 }
 
 module.exports = { evaluate };
